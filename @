@@ -1,0 +1,210 @@
+--[[
+    Delta Script: Enhanced Player Head Modifier
+    Senior-level optimized version with better performance and maintainability
+]]
+
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+-- Configuration Table (ง่ายต่อการปรับแต่ง)
+local Config = {
+    HeadSize = 4,
+    Enabled = true,
+    HeadProperties = {
+        Transparency = 0.7,
+        BrickColor = BrickColor.new("Really black"),
+        Material = Enum.Material.Neon,
+        CanCollide = false
+    },
+    -- Performance settings
+    ThrottleRate = 0.1, -- รันทุกๆ 0.1 วินาทีแทนที่จะทุก frame
+    UseDebounce = true,
+    DebugMode = false
+}
+
+-- Cache และ State Management
+local PlayerCache = {}
+local LastUpdate = 0
+local Connection = nil
+
+-- Utility Functions
+local function log(message)
+    if Config.DebugMode then
+        print("[HeadModifier]: " .. message)
+    end
+end
+
+local function safeModifyHead(character, head)
+    if not character or not head then
+        return false
+    end
+    
+    pcall(function()
+        head.Size = Vector3.new(Config.HeadSize, Config.HeadSize, Config.HeadSize)
+        head.Transparency = Config.HeadProperties.Transparency
+        head.BrickColor = Config.HeadProperties.BrickColor
+        head.Material = Config.HeadProperties.Material
+        head.CanCollide = Config.HeadProperties.CanCollide
+        
+        -- เพิ่มการตรวจสอบและป้องกัน            head.face.Transparency = 1
+        end
+    end)
+    
+    return true
+end
+
+-- ฟังก์ชันหลักสำหรับการอัพเดท
+local function updateHeads()
+    if not Config.Enabled or not LocalPlayer then
+        return
+    end
+    
+    local currentTime = tick()
+    
+    -- Throttling เพื่อ performance
+    if Config.UseDebounce and (currentTime - LastUpdate) < Config.ThrottleRate then
+        return
+    end
+    
+    LastUpdate = currentTime
+    
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            local character = player.Character
+            local head = character:FindFirstChild("Head")
+            
+            if head then
+                -- Cache ข้อมูลผู้เล่นเพื่อลดการคำนวณซ้ำ
+                if not PlayerCache[player] or PlayerCache[player] ~= character then
+                    PlayerCache[player] = character
+                    log("Applying modifications to " .. player.Name)
+                end
+                
+                safeModifyHead(character, head)
+            end
+        end
+    end
+end
+
+-- Event Handlers สำหรับการจัดการผู้เล่น
+local function onPlayerAdded(player)
+    player.CharacterAdded:Connect(function(character)
+        wait(0.5) -- รอให้ character โหลดสมบูรณ์
+        local head = character:FindFirstChild("Head")
+        if head then
+            safeModifyHead(character, head)
+        end
+    end)
+end
+
+-- Management Functions
+local HeadModifier = {}
+
+function HeadModifier:Start()
+    if Connection then
+        self:Stop()
+    end
+    
+    -- Initialize player connections
+    Players.PlayerAdded:Connect(onPlayerAdded)
+    
+    -- Initialize existing players
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            onPlayerAdded(player)
+        end
+    end
+    
+    -- Main update loop
+    Connection = RunService.RenderStepped:Connect(updateHeads)
+    log("Head modifier started")
+    
+    return self
+end
+
+function HeadModifier:Stop()
+    if Connection then
+        Connection:Disconnect()
+        Connection = nil
+    end    
+    -- Reset all modified heads
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player.Character then
+            local head = player.Character:FindFirstChild("Head")
+            if head then
+                pcall(function()
+                    head.Size = Vector3.new(2, 1, 1)
+                    head.Transparency = 0
+                    head.BrickColor = BrickColor.new("Bright yellow")
+                    head.Material = Enum.Material.Plastic
+                    head.CanCollide = true
+                end)
+            end
+        end
+    end
+    
+    PlayerCache = {}
+    log("Head modifier stopped")
+end
+
+function HeadModifier:Toggle(state)
+    if state ~= nil then
+        Config.Enabled = state
+    else
+        Config.Enabled = not Config.Enabled
+    end
+    
+    if Config.Enabled then
+        self:Start()
+    else
+        self:Stop()
+    end
+    
+    log("Head modifier toggled: " .. tostring(Config.Enabled))
+    return Config.Enabled
+end
+
+function HeadModifier:SetHeadSize(size)
+    if type(size) == "number" and size > 0 then
+        Config.HeadSize = size
+        log("Head size changed to: " .. tostring(size))
+        return true
+    end
+    return false
+end
+
+function HeadModifier:UpdateProperties(properties)
+    if type(properties) == "table" then
+        for key, value in pairs(properties) do
+            if Config.HeadProperties[key] ~= nil then
+                Config.HeadProperties[key] = value
+            end
+        end
+        log("Properties updated")
+        return true
+    end
+    return false
+end
+
+-- GUI Interface (Optional)
+local function createGUI()
+    if not LocalPlayer or not LocalPlayer:FindFirstChild("PlayerGui") then
+        return
+    end
+    
+    local screenGui = Instance.new("ScreenGui")
+    local frame = Instance.new("Frame")
+    local toggleBtn = Instance.new("TextButton")
+    local sizeSlider = Instance.new("TextBox")
+    
+    -- GUI setup code here...
+    -- สามารถเพิ่ม UI สำหรับควบคุมได้
+end
+
+-- Auto-start if enabled
+if Config.Enabled then
+    HeadModifier:Start()
+end
+
+return HeadModifier
